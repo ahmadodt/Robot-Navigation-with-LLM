@@ -1,0 +1,18 @@
+{
+    "TOKEN": "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",
+    "MODEL_NAME": "meta-llama/Llama-2-7b-chat-hf",
+    "FEW_SHOTS_FILE": "json_files/few_shots.json",
+    "PROMPT_TEMPLATES": "json_files/prompts.json",
+    "COMMAND_OUTPUT_FILE": "json_files/command_output.json",
+    "MAP_MATRIX":   [
+        [0, 2, 0, 0, 3, 0],
+        [0, 0, 0, 2, 0, 0],
+        [0, 0, 1, 0, 0, 3],
+        [3, 0, 0, 0, 0, 0],
+        [0, 0, 2, 0, 3, 0],
+        [0, 0, 0, 0, 0, 2]
+    ],
+    "GOAL_POSITION": [4, 5],
+    "MOVES": 4,
+    "NUM_FEW_SHOTS": 3
+}

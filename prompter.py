@@ -1,59 +1,61 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-import torch
 import json
 import random
 
 class RobotPromptGenerator:
-    def __init__(self, prompt_type, prompt_templates, map, goal, few_shots_file, num_few_shots):
+    """Generates prompts for a robot based on its map and goal, and updates its position."""
+    
+    def __init__(self, prompt_type, prompt_templates, map_matrix, goal, few_shots_file, num_few_shots):
+        """
+        Initializes the RobotPromptGenerator with given parameters.
+
+        Args:
+            prompt_type (str): The type of prompt to generate.
+            prompt_templates (str): Path to the prompt templates file.
+            map_matrix (list): The current map matrix of the environment.
+            goal (tuple): The goal position (row, col).
+            few_shots_file (str): Path to the file containing few-shot examples.
+            num_few_shots (int): Number of few-shot examples to include in the prompt.
+        """
         self.prompt_type = prompt_type
-        self.prompt_templates = prompt_templates
-        self.map = map
+        self.map_matrix = map_matrix
         self.goal = goal
         self.few_shots_file = few_shots_file
         self.num_few_shots = num_few_shots
 
         # Load few-shot examples
-        with open(few_shots_file, 'r') as file:
-            self.few_shots = json.load(file)
-
-    def build_prompt(self) -> str:
-        if self.prompt_type == "str":
-            prompt = ""
-            prompt += self.prompt_templates.get("main_prompt", "No main prompt available.")
-            prompt = self.add_few_shots(prompt)
-            prompt = self.check_surroundings(prompt)
-            prompt = self.add_goal_command(prompt)
-            return prompt
-
-    def add_few_shots(self, prompt):
-        # Select the desired number of few-shot examples
-        selected_few_shots = random.sample(self.few_shots, min(self.num_few_shots, len(self.few_shots)))
+        self.few_shots = self._load_json(few_shots_file)
         
-        # Append each few-shot example to the prompt
+        # Load prompts
+        self.prompt_templates = self._load_json(prompt_templates)
+    
+    def _load_json(self, file_path):
+        """Load JSON data from a file."""
+        with open(file_path, 'r') as file:
+            return json.load(file)
+    
+    def build_prompt(self) -> str:
+        """Builds the prompt based on the specified prompt type."""
+        if self.prompt_type == "str":
+            prompt = self.prompt_templates.get("main_prompt", "No main prompt available.")
+            prompt = self._add_few_shots(prompt)
+            prompt = self._check_surroundings(prompt)
+            prompt = self._add_goal_command(prompt)
+            prompt += self.prompt_templates.get("end_prompt")
+            return prompt
+    
+    def _add_few_shots(self, prompt: str) -> str:
+        """Add few-shot examples to the prompt."""
+        selected_few_shots = random.sample(self.few_shots, min(self.num_few_shots, len(self.few_shots)))
         for shot in selected_few_shots:
             prompt += f"\nFew-shot Example: {shot['prompt']}\nExpected Result: {shot['expected_result']}\n"
         return prompt
 
-    def check_surroundings(self, prompt):
-        matrix = self.map
-        rows = len(matrix)
-        cols = len(matrix[0])
-
-        # Finding the position of the robot (value 1)
-        robot_position = None
-        for i in range(rows):
-            for j in range(cols):
-                if matrix[i][j] == 1:
-                    robot_position = (i, j)
-                    break
-            if robot_position:
-                break
-
+    def _check_surroundings(self, prompt: str) -> str:
+        """Add information about the robot's surroundings to the prompt."""
+        robot_position = self._find_robot_position()
         if not robot_position:
             return "Robot not found."
 
-        # Directions to check surrounding cells (8 directions)
         directions = {
             (-1, -1): "front_left",
             (-1, 0): "front",
@@ -65,58 +67,43 @@ class RobotPromptGenerator:
             (1, 1): "back_right",
         }
 
-        # Object types
         object_types = {
             2: "human_too_close",
             3: "electricity_box_close",
         }
 
-        # Check each surrounding cell
         for direction, position in directions.items():
             new_row = robot_position[0] + direction[0]
             new_col = robot_position[1] + direction[1]
-
-            # Check if the new position is within bounds
-            if 0 <= new_row < rows and 0 <= new_col < cols:
-                cell_value = matrix[new_row][new_col]
+            if 0 <= new_row < len(self.map_matrix) and 0 <= new_col < len(self.map_matrix[0]):
+                cell_value = self.map_matrix[new_row][new_col]
                 if cell_value in object_types:
                     template_key = f"{object_types[cell_value]}_{position}"
                     prompt += " " + self.prompt_templates.get(template_key, "")
 
         return prompt
 
-    def add_goal_command(self, prompt):
-        robot_position = self.find_robot_position()
+    def _add_goal_command(self, prompt: str) -> str:
+        """Add goal distance and direction to the prompt."""
+        robot_position = self._find_robot_position()
         if not robot_position:
             return prompt + " Robot not found."
 
-        # Calculate the difference between the goal and the robot position
         goal_row, goal_col = self.goal
         robot_row, robot_col = robot_position
         row_diff = goal_row - robot_row
         col_diff = goal_col - robot_col
 
-        # Determine the direction and step count
+        steps = []
         if row_diff < 0:
-            row_direction = "front"
+            steps.append(f"{abs(row_diff)} step{'s' if abs(row_diff) > 1 else ''} to the front")
         elif row_diff > 0:
-            row_direction = "back"
-        else:
-            row_direction = None
+            steps.append(f"{abs(row_diff)} step{'s' if abs(row_diff) > 1 else ''} to the back")
 
         if col_diff < 0:
-            col_direction = "left"
+            steps.append(f"{abs(col_diff)} step{'s' if abs(col_diff) > 1 else ''} to the left")
         elif col_diff > 0:
-            col_direction = "right"
-        else:
-            col_direction = None
-
-        # Construct the command message
-        steps = []
-        if row_direction:
-            steps.append(f"{abs(row_diff)} step{'s' if abs(row_diff) > 1 else ''} to the {row_direction}")
-        if col_direction:
-            steps.append(f"{abs(col_diff)} step{'s' if abs(col_diff) > 1 else ''} to the {col_direction}")
+            steps.append(f"{abs(col_diff)} step{'s' if abs(col_diff) > 1 else ''} to the right")
 
         if steps:
             command = " and ".join(steps)
@@ -124,78 +111,48 @@ class RobotPromptGenerator:
 
         return prompt
 
-    def find_robot_position(self):
-        matrix = self.map
-        rows = len(matrix)
-        cols = len(matrix[0])
-
-        # Finding the position of the robot (value 1)
-        for i in range(rows):
-            for j in range(cols):
-                if matrix[i][j] == 1:
+    def _find_robot_position(self):
+        """Find the robot's position in the map matrix."""
+        for i, row in enumerate(self.map_matrix):
+            for j, cell in enumerate(row):
+                if cell == 1:
                     return (i, j)
         return None
+    
+    def update_map_with_command(self, command: str):
+        """
+        Update the map based on the command issued.
 
+        Args:
+            command (str): The command indicating the movement directions.
 
-prompt_templates = {
-    #"main_prompt": "Given the following scenarios, generate a command for the robot to move towards the goal while considering any obstacles in its surroundings.",
-    "main_prompt": "Depending on this situation give me a robot command: ",
-    "human_too_close_front": "you are too close to a human in front of you, ",
-    "human_too_close_back": "you are too close to a human behind you, ",
-    "human_too_close_left": "you are too close to a human on your left, ",
-    "human_too_close_right": "you are too close to a human on your right, ",
-    "human_too_close_front_left": "you are too close to a human on your front left, ",
-    "human_too_close_front_right": "you are too close to a human on your front right, ",
-    "human_too_close_back_left": "you are too close to a human on your back left, ",
-    "human_too_close_back_right": "you are too close to a human on your back right, ",
-    "electricity_box_close_front": "you are too close to an electricity box in front of you, ",
-    "electricity_box_close_back": "you are too close to an electricity box behind you, ",
-    "electricity_box_close_left": "you are too close to an electricity box on your left, ",
-    "electricity_box_close_right": "you are too close to an electricity box on your right, ",
-    "electricity_box_close_front_left": "you are too close to an electricity box on your front left, ",
-    "electricity_box_close_front_right": "you are too close to an electricity box on your front right, ",
-    "electricity_box_close_back_left": "you are too close to an electricity box on your back left, ",
-    "electricity_box_close_back_right": "you are too close to an electricity box on your back right, ",
-    "end_prompt": "Which direction will you move to reach your goal and stay far from humans and electricity boxes?",
-}
+        Returns:
+            list: Updated map matrix.
+        """
+        robot_position = self._find_robot_position()
+        if not robot_position:
+            return "Robot not found."
 
-map_matrix = [
-    [0, 0, 2, 0],
-    [0, 1, 0, 3],
-    [2, 0, 0, 0],
-    [0, 0, 0, 0],
-]
+        row, col = robot_position
+        direction_map = {
+            "forward": (-1, 0),
+            "backward": (1, 0),
+            "left": (0, -1),
+            "right": (0, 1)
+        }
+        
+        steps = [direction for direction in direction_map.keys() if direction in command.lower()]
 
-goal_position = (3, 2)
+        for direction in steps:
+            move = direction_map[direction]
+            row += move[0]
+            col += move[1]
 
-# Path to the fewshots.json file
-few_shots_file = "few_shots.json"
+            if row < 0 or row >= len(self.map_matrix) or col < 0 or col >= len(self.map_matrix[0]):
+                return "Movement out of bounds."
 
-robot_prompt_generator = RobotPromptGenerator(
-    prompt_type="str",
-    prompt_templates=prompt_templates,
-    map=map_matrix,
-    goal=goal_position,
-    few_shots_file=few_shots_file,
-    num_few_shots=0  # Set the desired number of few-shots to include
-)
+            self.map_matrix[robot_position[0]][robot_position[1]] = 0
+            self.map_matrix[row][col] = 1
+            robot_position = (row, col)
 
-prompt = robot_prompt_generator.build_prompt()
-print(prompt)
-
-# Usage example
-
-token = "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"
-# Use the Llama 2-chat-hf model from Hugging Face
-model_name = "meta-llama/Llama-2-7b-chat-hf"
-
-tokenizer = AutoTokenizer.from_pretrained(model_name,token=token)
-model = AutoModelForCausalLM.from_pretrained(model_name,token=token)
-
-def generate_command(prompt):
-    inputs = tokenizer(prompt, return_tensors='pt')
-    outputs = model.generate(inputs['input_ids'], max_length=100)
-    command = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    return command
-
-print(generate_command(prompt))
+        return self.map_matrix

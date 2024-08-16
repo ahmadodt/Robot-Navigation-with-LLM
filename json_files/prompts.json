@@ -1,5 +1,6 @@
 {
-    "main_prompt": "Given the following scenarios, generate a command for the robot to move towards the goal while considering any obstacles in its surroundings.",
+    
+    "main_prompt": "Based on the following scenarios, generate only the expected result for the last scenario: ",
     "human_too_close_front": "you are too close to a human in front of you, ",
     "human_too_close_back": "you are too close to a human behind you, ",
     "human_too_close_left": "you are too close to a human on your left, ",
@@ -16,5 +17,5 @@
     "electricity_box_close_front_right": "you are too close to an electricity box on your front right, ",
     "electricity_box_close_back_left": "you are too close to an electricity box on your back left, ",
     "electricity_box_close_back_right": "you are too close to an electricity box on your back right, ",
-    "end_prompt": "Which direction will you move to reach your goal and stay far from humans and electricity boxes?",
+    "end_prompt": "Expected Result: "
 }
