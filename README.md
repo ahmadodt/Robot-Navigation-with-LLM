@@ -22,8 +22,8 @@ This project simulates a simple robot navigating a grid using instructions gener
 ### Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/robot-navigation-llm.git
-cd robot-navigation-llm
+git clone https://github.com/ahmadodt/Robot-Navigation-with-LLM.git
+cd Robot-Navigation-with-LLM
 ```
 ### Install Dependencies
 
